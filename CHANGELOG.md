@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-05-06
+
+### Added
+- Added `createMcpAdapter({ configPath, config })` for SDK integrations that need to overlay an in-memory MCP config on top of the existing file-based config.
+
+### Changed
+- Renamed the forked npm package to `@cansiny0320/pi-mcp-adapter`.
+
 ## [2.5.4] - 2026-05-04
 
 ### Changed

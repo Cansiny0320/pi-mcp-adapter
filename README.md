@@ -19,7 +19,7 @@ But the MCP ecosystem has useful stuff - databases, browsers, APIs. This adapter
 ## Install
 
 ```bash
-pi install npm:pi-mcp-adapter
+pi install npm:@cansiny0320/pi-mcp-adapter
 ```
 
 Restart Pi after installation.
@@ -100,6 +100,29 @@ Use the shared MCP files when you want one setup to work across hosts, and Pi-ow
 | `.pi/mcp.json` | Pi project override |
 
 Pi-specific files are the write targets for imported or shared global servers when Pi needs to persist adapter-only settings such as `directTools`.
+
+### SDK in-memory config
+
+The default extension still reads MCP config files exactly as before. SDK users can create an adapter with an in-memory config overlay:
+
+```ts
+import { createMcpAdapter } from "@cansiny0320/pi-mcp-adapter";
+
+const mcpExtension = createMcpAdapter({
+  configPath: "/path/to/mcp.json",
+  config: {
+    mcpServers: {
+      async_examine_tools: {
+        url: `https://mcp.example.com/mcp?scene=${encodeURIComponent(scene)}`,
+        lifecycle: "eager",
+        directTools: false,
+      },
+    },
+  },
+});
+```
+
+File config is loaded first. The in-memory config is applied last using the same merge rules as existing config precedence, so in-memory servers and settings win on name/key collisions.
 
 ### Server Options
 
