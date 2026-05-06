@@ -1,6 +1,6 @@
 {
-  "name": "pi-mcp-adapter",
-  "version": "2.5.4",
+  "name": "@cansiny0320/pi-mcp-adapter",
+  "version": "2.6.0",
   "description": "MCP (Model Context Protocol) adapter extension for Pi coding agent",
   "type": "module",
   "license": "MIT",
@@ -16,7 +16,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nicobailon/pi-mcp-adapter.git"
+    "url": "git+https://github.com/Cansiny0320/pi-mcp-adapter.git"
   },
   "keywords": [
     "pi-package",
@@ -81,6 +81,7 @@
     "@modelcontextprotocol/ext-apps": "^1.2.2",
     "@modelcontextprotocol/sdk": "^1.25.1",
     "@mariozechner/pi-ai": "^0.70.2",
+    "@mariozechner/pi-tui": "^0.73.0",
     "typebox": "^1.1.24",
     "open": "^10.2.0",
     "zod": "^3.25.0 || ^4.0.0"
