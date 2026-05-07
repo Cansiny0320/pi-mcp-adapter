@@ -48,7 +48,8 @@ async function attemptDirectAutoAuth(
     return { status: "skipped" };
   }
 
-  const grantType = definition.oauth?.grantType ?? "authorization_code";
+  const oauth = definition.oauth && typeof definition.oauth === "object" ? definition.oauth : undefined;
+  const grantType = oauth?.grantType ?? "authorization_code";
   if (!state.ui && grantType !== "client_credentials") {
     return {
       status: "failed",
