@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.1] - 2026-05-11
+
+### Changed
+- Republished the fork after correcting this repository's git author and committer identity to `Cansiny0320 <1136843910@qq.com>`.
+
 ## [2.7.0] - 2026-05-11
 
 ### Added
