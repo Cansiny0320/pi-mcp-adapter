@@ -7,13 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.6.0] - 2026-05-06
+## [2.6.1] - 2026-05-07
 
 ### Added
 - Added `createMcpAdapter({ configPath, config })` for SDK integrations that need to overlay an in-memory MCP config on top of the existing file-based config.
 
 ### Changed
 - Renamed the forked npm package to `@cansiny0320/pi-mcp-adapter`.
+
+## [2.6.0] - 2026-05-10
+
+### Added
+- Added a no-argument `/mcp-auth` OAuth picker and in-panel auth shortcut for OAuth-capable MCP servers.
+- Added compact collapsed rendering for MCP proxy and direct-tool result rows while keeping full tool results available when expanded.
+
+### Changed
+- Migrated Pi runtime dependencies and imports from deprecated `@mariozechner/*` packages to `@earendil-works/*` packages.
+
+### Fixed
+- Re-register dynamic OAuth clients during fresh auth when cached DCR client info exists without tokens, avoiding dead authorization URLs after server-side client invalidation.
+- Kept OAuth tokens, dynamic client info, PKCE verifiers, and OAuth state bound to the server URL so stale credentials cannot be reused after a server URL changes.
+- Kept the `/mcp-auth` OAuth picker search focused on OAuth server rows and prevented hidden panel shortcuts from unexpectedly launching auth.
+- Kept long MCP error results expanded in compact tool result rendering.
 
 ## [2.5.4] - 2026-05-04
 

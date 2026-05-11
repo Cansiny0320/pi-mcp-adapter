@@ -2,8 +2,8 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { getAgentPath } from "./agent-dir.js";
-import type { McpConfig, ServerEntry, McpSettings, ImportKind, ServerProvenance } from "./types.js";
+import { getAgentPath } from "./agent-dir.ts";
+import type { McpConfig, ServerEntry, McpSettings, ImportKind, ServerProvenance } from "./types.ts";
 
 const GENERIC_GLOBAL_CONFIG_PATH = join(homedir(), ".config", "mcp", "mcp.json");
 const PROJECT_CONFIG_NAME = ".mcp.json";
@@ -105,8 +105,8 @@ export function getProjectPiConfigPath(cwd = process.cwd()): string {
   return resolve(cwd, PROJECT_PI_CONFIG_NAME);
 }
 
-export function getConfigDiscoveryPaths(overridePath?: string): ConfigDiscoveryPath[] {
-  return getConfigSources(overridePath).map((source) => ({
+export function getConfigDiscoveryPaths(overridePath?: string, cwd = process.cwd()): ConfigDiscoveryPath[] {
+  return getConfigSources(overridePath, cwd).map((source) => ({
     label: source.label,
     path: source.readPath,
     exists: existsSync(source.readPath),
@@ -180,16 +180,24 @@ export function getMcpDiscoverySummary(overridePath?: string, cwd = process.cwd(
   };
 }
 
-export function loadMcpConfig(overridePath?: string, memoryConfig?: McpConfig): McpConfig {
+export function loadMcpConfig(overridePath?: string, memoryConfig?: McpConfig): McpConfig;
+export function loadMcpConfig(overridePath?: string, cwd?: string, memoryConfig?: McpConfig): McpConfig;
+export function loadMcpConfig(
+  overridePath?: string,
+  cwdOrMemoryConfig: string | McpConfig = process.cwd(),
+  memoryConfig?: McpConfig,
+): McpConfig {
+  const cwd = typeof cwdOrMemoryConfig === "string" ? cwdOrMemoryConfig : process.cwd();
+  const overlayConfig = typeof cwdOrMemoryConfig === "string" ? memoryConfig : cwdOrMemoryConfig;
   let config: McpConfig = { mcpServers: {} };
 
-  for (const source of getConfigSources(overridePath)) {
+  for (const source of getConfigSources(overridePath, cwd)) {
     const loaded = readValidatedConfig(source.readPath, `MCP config from ${source.readPath}`);
     if (!loaded) continue;
-    config = mergeMcpConfigs(config, expandImports(loaded));
+    config = mergeMcpConfigs(config, expandImports(loaded, cwd));
   }
 
-  return memoryConfig ? mergeMcpConfigs(config, memoryConfig) : config;
+  return overlayConfig ? mergeMcpConfigs(config, overlayConfig) : config;
 }
 
 function getConfigSources(overridePath?: string, cwd = process.cwd()): ConfigSourceSpec[] {
@@ -262,12 +270,12 @@ function mergeImports(left: ImportKind[] | undefined, right: ImportKind[] | unde
   return [...new Set(merged)];
 }
 
-function expandImports(config: McpConfig): McpConfig {
+function expandImports(config: McpConfig, cwd = process.cwd()): McpConfig {
   if (!config.imports?.length) return config;
 
   const importedServers: Record<string, ServerEntry> = {};
   for (const importKind of config.imports) {
-    const importPath = resolveImportPath(importKind);
+    const importPath = resolveImportPath(importKind, cwd);
     if (!importPath) continue;
 
     try {
@@ -591,17 +599,17 @@ export function writeSharedServerEntry(filePath: string, serverName: string, ent
   return filePath;
 }
 
-export function getServerProvenance(overridePath?: string): Map<string, ServerProvenance> {
+export function getServerProvenance(overridePath?: string, cwd = process.cwd()): Map<string, ServerProvenance> {
   const provenance = new Map<string, ServerProvenance>();
   const userPath = getPiGlobalConfigPath(overridePath);
 
-  for (const source of getConfigSources(overridePath)) {
+  for (const source of getConfigSources(overridePath, cwd)) {
     const loaded = readValidatedConfig(source.readPath, `MCP config from ${source.readPath}`);
     if (!loaded) continue;
 
     if (loaded.imports?.length) {
       for (const importKind of loaded.imports) {
-        const importPath = resolveImportPath(importKind);
+        const importPath = resolveImportPath(importKind, cwd);
         if (!importPath) continue;
 
         try {

@@ -1,15 +1,16 @@
-import type { ExtensionAPI, ToolInfo } from "@mariozechner/pi-coding-agent";
-import type { McpExtensionState } from "./state.js";
-import type { McpAdapterOptions } from "./types.js";
+import type { ExtensionAPI, ToolInfo } from "@earendil-works/pi-coding-agent";
+import type { McpExtensionState } from "./state.ts";
+import type { McpAdapterOptions } from "./types.ts";
 import { Type } from "typebox";
-import { showStatus, showTools, reconnectServers, authenticateServer, openMcpPanel, openMcpSetup } from "./commands.js";
-import { loadMcpConfig } from "./config.js";
-import { buildProxyDescription, createDirectToolExecutor, getMissingConfiguredDirectToolServers, resolveDirectTools } from "./direct-tools.js";
-import { flushMetadataCache, initializeMcp, updateStatusBar } from "./init.js";
-import { loadMetadataCache } from "./metadata-cache.js";
-import { executeCall, executeConnect, executeDescribe, executeList, executeSearch, executeStatus, executeUiMessages } from "./proxy-modes.js";
-import { getConfigPathFromArgv, truncateAtWord } from "./utils.js";
-import { initializeOAuth, shutdownOAuth } from "./mcp-auth-flow.js";
+import { showStatus, showTools, reconnectServers, authenticateServer, openMcpAuthPanel, openMcpPanel, openMcpSetup } from "./commands.ts";
+import { loadMcpConfig } from "./config.ts";
+import { buildProxyDescription, createDirectToolExecutor, getMissingConfiguredDirectToolServers, resolveDirectTools } from "./direct-tools.ts";
+import { flushMetadataCache, initializeMcp, updateStatusBar } from "./init.ts";
+import { loadMetadataCache } from "./metadata-cache.ts";
+import { executeCall, executeConnect, executeDescribe, executeList, executeSearch, executeStatus, executeUiMessages } from "./proxy-modes.ts";
+import { getConfigPathFromArgv, truncateAtWord } from "./utils.ts";
+import { initializeOAuth, shutdownOAuth } from "./mcp-auth-flow.ts";
+import { renderMcpToolResult } from "./tool-result-renderer.ts";
 
 function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
   let state: McpExtensionState | null = null;
@@ -67,13 +68,14 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
     || missingConfiguredDirectToolServers.length > 0;
 
   for (const spec of directSpecs) {
-    pi.registerTool({
+    (pi.registerTool as (tool: unknown) => unknown)({
       name: spec.prefixedName,
       label: `MCP: ${spec.originalName}`,
       description: spec.description || "(no description)",
       promptSnippet: truncateAtWord(spec.description, 100) || `MCP tool from ${spec.serverName}`,
-      parameters: Type.Unsafe<Record<string, unknown>>(spec.inputSchema || { type: "object", properties: {} }),
+      parameters: Type.Unsafe((spec.inputSchema || { type: "object", properties: {} }) as never),
       execute: createDirectToolExecutor(() => state, () => initPromise, spec),
+      renderResult: renderMcpToolResult,
     });
   }
 
@@ -211,8 +213,7 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
     description: "Authenticate with an MCP server (OAuth)",
     handler: async (args, ctx) => {
       const serverName = args?.trim();
-      if (!serverName) {
-        if (ctx.hasUI) ctx.ui.notify("Usage: /mcp-auth <server-name>", "error");
+      if (!serverName && !ctx.hasUI) {
         return;
       }
 
@@ -230,12 +231,17 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
         return;
       }
 
+      if (!serverName) {
+        await openMcpAuthPanel(state, pi, ctx, earlyConfigPath);
+        return;
+      }
+
       await authenticateServer(serverName, state.config, ctx);
     },
   });
 
   if (shouldRegisterProxyTool) {
-    pi.registerTool({
+    (pi.registerTool as (tool: unknown) => unknown)({
       name: "mcp",
       label: "MCP",
       description: buildProxyDescription(earlyConfig, earlyCache, directSpecs),
@@ -251,6 +257,7 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
         server: Type.Optional(Type.String({ description: "Filter to specific server (also disambiguates tool calls)" })),
         action: Type.Optional(Type.String({ description: "Action: 'ui-messages' to retrieve prompts/intents from UI sessions" })),
       }),
+      renderResult: renderMcpToolResult,
       async execute(_toolCallId, params: {
         tool?: string;
         args?: string;

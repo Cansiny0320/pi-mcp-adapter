@@ -15,6 +15,14 @@ const runtimeModules = readdirSync(repoRoot)
   .filter((entry) => !entry.endsWith(".test.ts"))
   .filter((entry) => entry !== "vitest.config.ts");
 
+function rewriteTsImportSpecifiers(outputText) {
+  return outputText
+    .replace(/from "(\.[^"]+)\.ts"/g, 'from "$1.js"')
+    .replace(/from '(\.[^']+)\.ts'/g, "from '$1.js'")
+    .replace(/import\("(\.[^"]+)\.ts"\)/g, 'import("$1.js")')
+    .replace(/import\('(\.[^']+)\.ts'\)/g, "import('$1.js')");
+}
+
 for (const entry of runtimeModules) {
   const sourcePath = join(repoRoot, entry);
   const outputPath = join(distDir, `${basename(entry, ".ts")}.js`);
@@ -29,14 +37,14 @@ for (const entry of runtimeModules) {
     },
   });
 
-  writeFileSync(outputPath, output.outputText, "utf-8");
+  writeFileSync(outputPath, rewriteTsImportSpecifiers(output.outputText), "utf-8");
 }
 
 copyFileSync(join(repoRoot, "app-bridge.bundle.js"), join(distDir, "app-bridge.bundle.js"));
 
 writeFileSync(
   join(distDir, "index.d.ts"),
-  `import type { ExtensionFactory } from "@mariozechner/pi-coding-agent";
+  `import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 
 export type McpServerLifecycle = "lazy" | "eager" | "keep-alive";
 
@@ -81,6 +89,7 @@ export interface McpSettings {
 
 export interface McpConfig {
   mcpServers: Record<string, McpServerEntry>;
+  imports?: Array<"cursor" | "claude-code" | "claude-desktop" | "codex" | "windsurf" | "vscode">;
   settings?: McpSettings;
 }
 
