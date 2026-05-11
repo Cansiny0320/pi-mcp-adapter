@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-05-11
+
+### Added
+- Published the fork with upstream 2.6.0 changes, including the `/mcp-auth` OAuth picker and compact MCP tool result rendering.
+
+### Changed
+- Synchronized the fork with upstream `main` through `v2.6.0` while preserving `createMcpAdapter({ configPath, config })` and the compiled SDK entrypoint.
+- Migrated the published fork runtime dependencies to `@earendil-works/*`.
+
 ## [2.6.1] - 2026-05-07
 
 ### Added
