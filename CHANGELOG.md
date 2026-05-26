@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.2] - 2026-05-26
+
+### Fixed
+
+- Removed the first-session proxy fallback for configured direct tools: missing or stale direct-tool metadata is now loaded live before tool registration, and `disableProxyTool` hides the proxy consistently.
+
 ## [2.7.1] - 2026-05-11
 
 ### Changed

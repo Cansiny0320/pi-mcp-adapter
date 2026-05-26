@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { buildProxyDescription, resolveDirectTools } from "../direct-tools.ts";
+import { buildProxyDescription, resolveDirectTools, resolveDirectToolsWithLiveMetadata } from "../direct-tools.ts";
 import { computeServerHash, isServerCacheValid, type MetadataCache } from "../metadata-cache.ts";
 import { buildToolMetadata } from "../tool-metadata.ts";
 import type { McpConfig } from "../types.ts";
@@ -295,5 +295,68 @@ describe("excludeTools filtering", () => {
     const specs = resolveDirectTools(config, cache, "none");
 
     expect(specs.map((spec) => spec.prefixedName)).toEqual(["get_nodes"]);
+  });
+});
+
+describe("direct tool live metadata loading", () => {
+  it("loads missing direct tool metadata before resolving specs", async () => {
+    const config: McpConfig = {
+      settings: { toolPrefix: "server", directTools: true },
+      mcpServers: {
+        demo: {
+          command: "npx",
+          args: ["demo-server"],
+        },
+      },
+    };
+    const manager = {
+      connect: vi.fn(async () => ({
+        status: "connected" as const,
+        tools: [
+          {
+            name: "search",
+            description: "Search demo",
+            inputSchema: {
+              type: "object",
+              properties: {
+                query: { type: "string" },
+              },
+            },
+          },
+        ],
+        resources: [],
+      })),
+      closeAll: vi.fn(async () => undefined),
+    };
+
+    const specs = await resolveDirectToolsWithLiveMetadata(
+      config,
+      null,
+      "server",
+      undefined,
+      {
+        createManager: () => manager,
+        saveCache: vi.fn(),
+      },
+    );
+
+    expect(manager.connect).toHaveBeenCalledWith("demo", config.mcpServers.demo);
+    expect(manager.closeAll).toHaveBeenCalledTimes(1);
+    expect(specs).toEqual([
+      {
+        serverName: "demo",
+        originalName: "search",
+        prefixedName: "demo_search",
+        description: "Search demo",
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: { type: "string" },
+          },
+        },
+        uiResourceUri: undefined,
+        uiStreamMode: undefined,
+      },
+    ]);
   });
 });

@@ -4,7 +4,7 @@ import type { McpAdapterOptions } from "./types.ts";
 import { Type } from "typebox";
 import { showStatus, showTools, reconnectServers, authenticateServer, openMcpAuthPanel, openMcpPanel, openMcpSetup } from "./commands.ts";
 import { loadMcpConfig } from "./config.ts";
-import { buildProxyDescription, createDirectToolExecutor, getMissingConfiguredDirectToolServers, resolveDirectTools } from "./direct-tools.ts";
+import { buildProxyDescription, createDirectToolExecutor, resolveDirectToolsWithLiveMetadata } from "./direct-tools.ts";
 import { flushMetadataCache, initializeMcp, updateStatusBar } from "./init.ts";
 import { loadMetadataCache } from "./metadata-cache.ts";
 import { executeCall, executeConnect, executeDescribe, executeList, executeSearch, executeStatus, executeUiMessages } from "./proxy-modes.ts";
@@ -12,7 +12,7 @@ import { getConfigPathFromArgv, truncateAtWord } from "./utils.ts";
 import { initializeOAuth, shutdownOAuth } from "./mcp-auth-flow.ts";
 import { renderMcpToolResult } from "./tool-result-renderer.ts";
 
-function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
+async function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
   let state: McpExtensionState | null = null;
   let initPromise: Promise<McpExtensionState> | null = null;
   let lifecycleGeneration = 0;
@@ -55,17 +55,13 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
   const envRaw = process.env.MCP_DIRECT_TOOLS;
   const directSpecs = envRaw === "__none__"
     ? []
-    : resolveDirectTools(
+    : await resolveDirectToolsWithLiveMetadata(
         earlyConfig,
         earlyCache,
         prefix,
         envRaw?.split(",").map(s => s.trim()).filter(Boolean),
       );
-  const missingConfiguredDirectToolServers = getMissingConfiguredDirectToolServers(earlyConfig, earlyCache);
-  const shouldRegisterProxyTool =
-    earlyConfig.settings?.disableProxyTool !== true
-    || directSpecs.length === 0
-    || missingConfiguredDirectToolServers.length > 0;
+  const shouldRegisterProxyTool = earlyConfig.settings?.disableProxyTool !== true;
 
   for (const spec of directSpecs) {
     (pi.registerTool as (tool: unknown) => unknown)({
@@ -328,8 +324,8 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
 }
 
 export function createMcpAdapter(options: McpAdapterOptions = {}) {
-  return function mcpAdapter(pi: ExtensionAPI) {
-    installMcpAdapter(pi, options);
+  return async function mcpAdapter(pi: ExtensionAPI) {
+    await installMcpAdapter(pi, options);
   };
 }
 

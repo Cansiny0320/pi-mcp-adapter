@@ -1,9 +1,9 @@
 import type { AgentToolResult, AgentToolUpdateCallback, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { McpExtensionState } from "./state.ts";
-import type { DirectToolSpec, McpConfig, McpContent } from "./types.ts";
-import type { MetadataCache } from "./metadata-cache.ts";
+import type { DirectToolSpec, McpConfig, McpContent, McpResource, McpTool, ServerEntry } from "./types.ts";
+import type { MetadataCache, ServerCacheEntry } from "./metadata-cache.ts";
 import { lazyConnect, getFailureAgeSeconds } from "./init.ts";
-import { isServerCacheValid } from "./metadata-cache.ts";
+import { computeServerHash, isServerCacheValid, saveMetadataCache, serializeResources, serializeTools } from "./metadata-cache.ts";
 import { formatSchema } from "./tool-metadata.ts";
 import { transformMcpContent } from "./tool-registrar.ts";
 import { maybeStartUiSession, type UiSessionRuntime } from "./ui-session.ts";
@@ -11,6 +11,8 @@ import { formatToolName, isToolExcluded } from "./types.ts";
 import { resourceNameToToolName } from "./resource-tools.ts";
 import { authenticate, supportsOAuth } from "./mcp-auth-flow.ts";
 import { formatAuthRequiredMessage } from "./utils.ts";
+import { McpServerManager } from "./server-manager.ts";
+import { logger } from "./logger.ts";
 
 const BUILTIN_NAMES = new Set(["read", "bash", "edit", "write", "grep", "find", "ls", "mcp"]);
 
@@ -18,6 +20,19 @@ type DirectAutoAuthResult =
   | { status: "skipped" }
   | { status: "success" }
   | { status: "failed"; message: string };
+type DirectToolFilter = true | string[] | false;
+type ParsedDirectToolEnvOverride = {
+  servers: Set<string>;
+  toolsByServer: Map<string, Set<string>>;
+};
+type DirectToolMetadataManager = {
+  connect: (serverName: string, definition: ServerEntry) => Promise<{
+    status: "connected" | "closed" | "needs-auth";
+    tools: McpTool[];
+    resources: McpResource[];
+  }>;
+  closeAll: () => Promise<void>;
+};
 
 function getDirectAuthRequiredMessage(
   state: McpExtensionState,
@@ -33,6 +48,55 @@ function getDirectAuthFailedMessage(state: McpExtensionState, serverName: string
     return `OAuth authentication failed for "${serverName}": ${message}. ${getDirectAuthRequiredMessage(state, serverName)}`;
   }
   return `OAuth authentication failed for "${serverName}": ${message}. Run /mcp-auth ${serverName} first.`;
+}
+
+function parseDirectToolEnvOverride(envOverride?: string[]): ParsedDirectToolEnvOverride | undefined {
+  if (!envOverride) return undefined;
+
+  const servers = new Set<string>();
+  const toolsByServer = new Map<string, Set<string>>();
+
+  for (let item of envOverride) {
+    item = item.replace(/\/+$/, "");
+    if (item.includes("/")) {
+      const [server, tool] = item.split("/", 2);
+      if (server && tool) {
+        if (!toolsByServer.has(server)) toolsByServer.set(server, new Set());
+        toolsByServer.get(server)!.add(tool);
+      } else if (server) {
+        servers.add(server);
+      }
+    } else if (item) {
+      servers.add(item);
+    }
+  }
+
+  return {
+    servers,
+    toolsByServer,
+  };
+}
+
+function getDirectToolFilter(
+  serverName: string,
+  definition: ServerEntry,
+  globalDirect: McpConfig["settings"]["directTools"],
+  envOverride?: ParsedDirectToolEnvOverride,
+): DirectToolFilter {
+  if (envOverride) {
+    if (envOverride.servers.has(serverName)) {
+      return true;
+    }
+
+    const tools = envOverride.toolsByServer.get(serverName);
+    return tools ? [...tools] : false;
+  }
+
+  if (definition.directTools !== undefined) {
+    return definition.directTools;
+  }
+
+  return globalDirect || false;
 }
 
 async function attemptDirectAutoAuth(
@@ -83,47 +147,14 @@ export function resolveDirectTools(
   if (!cache) return specs;
 
   const seenNames = new Set<string>();
-
-  const envServers = new Set<string>();
-  const envTools = new Map<string, Set<string>>();
-  if (envOverride) {
-    for (let item of envOverride) {
-      item = item.replace(/\/+$/, "");
-      if (item.includes("/")) {
-        const [server, tool] = item.split("/", 2);
-        if (server && tool) {
-          if (!envTools.has(server)) envTools.set(server, new Set());
-          envTools.get(server)!.add(tool);
-        } else if (server) {
-          envServers.add(server);
-        }
-      } else if (item) {
-        envServers.add(item);
-      }
-    }
-  }
-
   const globalDirect = config.settings?.directTools;
+  const parsedEnvOverride = parseDirectToolEnvOverride(envOverride);
 
   for (const [serverName, definition] of Object.entries(config.mcpServers)) {
     const serverCache = cache.servers[serverName];
     if (!serverCache || !isServerCacheValid(serverCache, definition)) continue;
 
-    let toolFilter: true | string[] | false = false;
-
-    if (envOverride) {
-      if (envServers.has(serverName)) {
-        toolFilter = true;
-      } else if (envTools.has(serverName)) {
-        toolFilter = [...envTools.get(serverName)!];
-      }
-    } else {
-      if (definition.directTools !== undefined) {
-        toolFilter = definition.directTools;
-      } else if (globalDirect) {
-        toolFilter = globalDirect;
-      }
-    }
+    const toolFilter = getDirectToolFilter(serverName, definition, globalDirect, parsedEnvOverride);
 
     if (!toolFilter) continue;
 
@@ -183,14 +214,14 @@ export function resolveDirectTools(
 export function getMissingConfiguredDirectToolServers(
   config: McpConfig,
   cache: MetadataCache | null,
+  envOverride?: string[],
 ): string[] {
   const missing: string[] = [];
   const globalDirect = config.settings?.directTools;
+  const parsedEnvOverride = parseDirectToolEnvOverride(envOverride);
 
   for (const [serverName, definition] of Object.entries(config.mcpServers)) {
-    const hasDirectTools = definition.directTools !== undefined
-      ? !!definition.directTools
-      : !!globalDirect;
+    const hasDirectTools = !!getDirectToolFilter(serverName, definition, globalDirect, parsedEnvOverride);
 
     if (!hasDirectTools) continue;
 
@@ -201,6 +232,67 @@ export function getMissingConfiguredDirectToolServers(
   }
 
   return missing;
+}
+
+function buildLiveServerCacheEntry(definition: ServerEntry, tools: McpTool[], resources: McpResource[]): ServerCacheEntry {
+  return {
+    configHash: computeServerHash(definition),
+    tools: serializeTools(tools),
+    resources: definition.exposeResources === false ? [] : serializeResources(resources),
+    cachedAt: Date.now(),
+  };
+}
+
+export async function resolveDirectToolsWithLiveMetadata(
+  config: McpConfig,
+  cache: MetadataCache | null,
+  prefix: "server" | "none" | "short",
+  envOverride?: string[],
+  options: {
+    createManager?: () => DirectToolMetadataManager;
+    saveCache?: (cache: MetadataCache) => void;
+  } = {},
+): Promise<DirectToolSpec[]> {
+  const liveCache: MetadataCache = {
+    version: cache?.version ?? 1,
+    servers: {
+      ...(cache?.servers ?? {}),
+    },
+  };
+  const missingServers = getMissingConfiguredDirectToolServers(config, liveCache, envOverride);
+
+  if (missingServers.length === 0) {
+    return resolveDirectTools(config, liveCache, prefix, envOverride);
+  }
+
+  const manager = options.createManager?.() ?? new McpServerManager();
+  const writeCache = options.saveCache ?? saveMetadataCache;
+
+  try {
+    await Promise.all(
+      missingServers.map(async (serverName) => {
+        const definition = config.mcpServers[serverName];
+        try {
+          const connection = await manager.connect(serverName, definition);
+          if (connection.status !== "connected") {
+            logger.debug(`MCP: direct tool metadata unavailable for ${serverName}: ${connection.status}`);
+            return;
+          }
+
+          const entry = buildLiveServerCacheEntry(definition, connection.tools, connection.resources);
+          liveCache.servers[serverName] = entry;
+          writeCache({ version: 1, servers: { [serverName]: entry } });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          logger.debug(`MCP: direct tool metadata preload failed for ${serverName}: ${message}`);
+        }
+      })
+    );
+  } finally {
+    await manager.closeAll();
+  }
+
+  return resolveDirectTools(config, liveCache, prefix, envOverride);
 }
 
 export function buildProxyDescription(
