@@ -193,30 +193,19 @@ describe("mcpAdapter session lifecycle", () => {
     expect(api.registerTool).not.toHaveBeenCalledWith(expect.objectContaining({ name: "mcp" }));
   });
 
-  it("skips the proxy tool once direct tools are fully available", async () => {
+  it("does not restore the proxy tool when configured direct metadata is unavailable", async () => {
     mocks.loadMcpConfig.mockReturnValue({
       mcpServers: {
         demo: { command: "npx", args: ["-y", "demo-server"], directTools: true },
       },
       settings: { disableProxyTool: true },
     });
-    mocks.resolveDirectToolsWithLiveMetadata.mockResolvedValue([
-      {
-        serverName: "demo",
-        originalName: "search",
-        prefixedName: "demo_search",
-        description: "Search demo",
-      },
-    ]);
+    mocks.resolveDirectToolsWithLiveMetadata.mockResolvedValue([]);
 
     const { default: mcpAdapter } = await import("../index.ts");
     const { api } = createPi();
     await mcpAdapter(api);
 
-    expect(api.registerTool).toHaveBeenCalledWith(expect.objectContaining({
-      name: "demo_search",
-      renderResult: expect.any(Function),
-    }));
     expect(api.registerTool).not.toHaveBeenCalledWith(expect.objectContaining({ name: "mcp" }));
   });
 
